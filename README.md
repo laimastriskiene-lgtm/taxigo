@@ -1,2 +1,2 @@
 # taxigo
-Internetinė taksi užsakymų sistemą TaxiGo
+TaxiGo – taksi užsakymų sistema
