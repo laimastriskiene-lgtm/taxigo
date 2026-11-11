@@ -1,0 +1,16 @@
+# Įdiegti paketai
+node_modules/
+
+# Slapti nustatymai
+.env
+.env.local
+.env.*.local
+
+# Sukurti projekto failai
+dist/
+
+# Sistemos failai
+.DS_Store
+
+# Žurnalai
+*.log
