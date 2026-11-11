@@ -10,7 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "react": "^19.3.1",
+    "react-day-picker": "^9.14.0",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
