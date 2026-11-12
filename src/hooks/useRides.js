@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { normalizeRideEstimate } from '../lib/rideEstimate'
 
-const columns = 'id,passenger_id,user_id,pickup_address,destination,phone,pickup_time,priority,status,car_type,created_at'
+const columns = 'id,passenger_id,user_id,pickup_address,destination,phone,pickup_time,priority,status,car_type,created_at,distance_km,duration_min,estimated_price'
 const fallbackMessage = 'Užsakymo išsiųsti nepavyko. Duomenys išsaugoti. Bandykite dar kartą.'
 const storageKey = userId => 'taxigo:ride-draft:v1:' + userId
 
@@ -13,6 +14,7 @@ function rideFields(values) {
     pickup_time: values.pickup_time,
     priority: values.priority,
     car_type: values.car_type,
+    ...normalizeRideEstimate(values),
   }
 }
 
