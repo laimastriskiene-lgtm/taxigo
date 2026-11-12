@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 
 export default function AuthForm({ auth, onDemo, onSuccess }) {
   const [mode, setMode] = useState('login')
@@ -63,6 +63,6 @@ export default function AuthForm({ auth, onDemo, onSuccess }) {
     </form>
     <button className="secondary auth-action" disabled={auth.busy} onClick={() => { setMode(register ? 'login' : 'register'); setPassword(''); setValidation(''); setShowResult(false) }}>{register ? 'Jau turi paskyrą? Prisijunk' : 'Neturi paskyros? Registruokis'}</button>
     <div className="divider"><span>arba</span></div><button className="secondary" disabled={auth.busy} onClick={onDemo}>Išbandyti be prisijungimo</button>
-    <p className="privacy-note">Paskyros duomenys siunčiami į Supabase.<br />Kelionės ir užsakymai tebėra demonstraciniai.</p>
+    <p className="privacy-note">Paskyros duomenys siunčiami į Supabase.<br />Prisijungus užsakymai saugomi Supabase. Be prisijungimo veikia demonstracija.</p>
   </section>
 }
