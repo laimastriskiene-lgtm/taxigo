@@ -28,7 +28,7 @@ const route = () => ({ features: [{ properties: { distance: 3255, distance_units
 test('selected precise addresses use one drive/metric request with latitude-longitude waypoints', async () => {
   const { api, calls } = setup(route)
   const estimate = await api.calculateRideEstimate(input)
-  assert.deepEqual(estimate, { distance_km: 3.26, duration_min: 6, estimated_price: 6.26 })
+  assert.deepEqual({ ...estimate }, { distance_km: 3.26, duration_min: 6, estimated_price: 6.26, distanceMeters: 3255 })
   assert.equal(calls.length, 1)
   assert.equal(calls[0].url.searchParams.get('mode'), 'drive')
   assert.equal(calls[0].url.searchParams.get('units'), 'metric')

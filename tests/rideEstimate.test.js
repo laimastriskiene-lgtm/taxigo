@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateEstimate, emptyEstimate, normalizeRideEstimate, formatPrice, formatDistance, formatDuration } from '../src/lib/rideEstimate.js'
+import { calculatePrice, calculateEstimate, emptyEstimate, normalizeRideEstimate, formatPrice, formatDistance, formatDuration } from '../src/lib/rideEstimate.js'
 
 test('route uses meters for price, rounds kilometers/cents, rounds duration upwards', () => {
   assert.deepEqual(calculateEstimate(3255, 321.31), { distance_km: 3.26, duration_min: 6, estimated_price: 6.26 })
@@ -33,4 +33,16 @@ test('history and missing values never turn null into a zero price', () => {
   assert.match(formatPrice(6.26), /6,26/)
   assert.equal(formatDistance(3.26), '3,26 km')
   assert.equal(formatDuration(6), 'Apie 6 min.')
+})
+
+
+test('standard and comfort use their own rates from unrounded meters', () => {
+  for (const [type, price] of [['standard', 13], ['comfort', 18]]) {
+    assert.deepEqual(calculateEstimate(10000, 600, type), { distance_km: 10, duration_min: 10, estimated_price: price })
+    assert.equal(calculatePrice(0, type), 3)
+    for (const meters of [null, undefined, -1, NaN, Infinity, '1000']) assert.equal(calculatePrice(meters, type), null)
+  }
+  assert.equal(calculatePrice(3255, 'comfort'), 7.88)
+  assert.equal(calculatePrice(1004.9, 'comfort'), 4.51)
+  assert.equal(calculatePrice(1000, 'unknown'), null)
 })

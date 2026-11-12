@@ -21,7 +21,15 @@ export function normalizeRideEstimate(value = {}) {
   return { distance_km: km, duration_min: minutes, estimated_price: price }
 }
 
-export function calculateEstimate(distanceMeters, durationSeconds) {
+export function calculatePrice(distanceMeters, carType = 'standard') {
+  const rates = { standard: 1, comfort: 1.5 }
+  if (!Object.hasOwn(rates, carType) || typeof distanceMeters !== 'number'
+    || !Number.isFinite(distanceMeters) || distanceMeters < 0) return null
+  const price = Math.round(300 + distanceMeters / 10 * rates[carType] + Number.EPSILON) / 100
+  return price <= 99999999.99 ? price : null
+}
+
+export function calculateEstimate(distanceMeters, durationSeconds, carType = 'standard') {
   if (typeof distanceMeters !== 'number' || !Number.isFinite(distanceMeters) || distanceMeters < 0
     || typeof durationSeconds !== 'number' || !Number.isFinite(durationSeconds) || durationSeconds < 0) {
     throw new Error('Maršruto atsakyme nėra tinkamo atstumo arba trukmės.')
@@ -30,7 +38,7 @@ export function calculateEstimate(distanceMeters, durationSeconds) {
   const result = normalizeRideEstimate({
     distance_km: Math.round((distanceMeters / 1000 + Number.EPSILON) * 100) / 100,
     duration_min: Math.ceil(durationSeconds / 60),
-    estimated_price: Math.round(300 + distanceMeters / 10 + Number.EPSILON) / 100,
+    estimated_price: calculatePrice(distanceMeters, carType),
   })
   if (result.estimated_price === null) throw new Error('Maršruto reikšmės per didelės.')
   return result

@@ -132,5 +132,5 @@ export async function calculateRideEstimate(input, { signal } = {}) {
   if (!route || route.distance_units?.toLowerCase() !== 'meters') {
     throw new Error('Automobilio maršrutas nerastas arba jo atstumas nepatvirtintas metrais.')
   }
-  return calculateEstimate(route.distance, route.time)
+  return { ...calculateEstimate(route.distance, route.time), distanceMeters: route.distance }
 }
