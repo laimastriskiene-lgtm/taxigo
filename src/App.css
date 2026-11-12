@@ -35,3 +35,18 @@
 @media(min-width:600px){.app-shell{--taxigo-card-width:calc((100% - var(--taxigo-trip-gap)) / 2)}}
 @media(min-width:600px) and (max-width:899px){.bottom-nav{width:calc((100% - 72px - var(--taxigo-trip-gap)) / 2);left:36px}}
 @media(min-width:900px){.bottom-nav{margin-left:0;margin-right:0}.bottom-nav>button{flex-direction:row;gap:6px}.login-layout>.bottom-nav{width:100%;max-width:540px}}
+
+
+/* Lithuanian address suggestions share the existing dark form palette. */
+.address-autocomplete{position:relative;min-width:0;margin-top:20px}
+.address-autocomplete>label{margin:0}
+.address-suggestions{position:absolute;z-index:4;top:100%;left:0;right:0;width:100%;max-width:100%;max-height:min(280px,40dvh);overflow-y:auto;overscroll-behavior:contain;list-style:none;margin:6px 0 0;padding:4px;background:#111e32;border:1px solid #3a4860;border-radius:13px;box-shadow:0 10px 24px #0005}
+.address-suggestions>li{min-width:0;margin:0;padding:0}
+.address-option{display:block;width:100%;min-width:0;min-height:54px;padding:12px;text-align:left;white-space:normal;overflow-wrap:anywhere;background:transparent;color:#f7f8fc;border:1px solid transparent;border-radius:9px;touch-action:pan-y}
+.address-option:hover,.address-option[aria-selected="true"]{background:#ffd43b14;border-color:#ffd43b55}
+.address-option:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.address-option-title{display:block;font-size:14px;line-height:1.5;font-weight:600}
+.address-option-details{display:block;margin-top:3px;font-size:12px;line-height:1.5;color:#b4bfd1}
+.address-help{margin:8px 0 0;font-size:11px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.address-attribution{margin-top:12px;font-size:11px;line-height:1.6;color:var(--muted)}
+.address-attribution a{color:var(--accent);text-decoration:underline}
