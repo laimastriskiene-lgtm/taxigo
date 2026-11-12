@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getAddressError } from '../src/lib/addressValidation.js'
-import { emptyEstimate } from '../src/lib/rideEstimate.js'
+import { emptyEstimate, normalizeRideEstimate, calculatePrice } from '../src/lib/rideEstimate.js'
 import { loadFunctions, hookHarness } from './helpers/hookHarness.js'
 
 function setup() {
@@ -12,7 +12,7 @@ function setup() {
     const useRideEstimate = loadFunctions('src/hooks/useRideEstimate.js', 'useRideEstimate', context)
     return () => useRideEstimate(input)
   }, {
-    getAddressError, emptyEstimate, AbortController,
+    getAddressError, emptyEstimate, normalizeRideEstimate, calculatePrice, AbortController,
     setTimeout: (fn, delay) => { const id = ++next; timers.set(id, { at: now + delay, fn }); return id },
     clearTimeout: id => timers.delete(id),
     calculateRideEstimate: (value, { signal }) => new Promise((resolve, reject) => requests.push({ value, signal, resolve, reject })),
@@ -27,7 +27,7 @@ function setup() {
     },
   }
 }
-const estimate = { distance_km: 3.26, duration_min: 6, estimated_price: 6.26 }
+const estimate = { distance_km: 3.26, duration_min: 6, estimated_price: 6.26, distanceMeters: 3255 }
 
 test('debounce and changing the address immediately remove the previous estimate', async () => {
   const t = setup()
@@ -46,7 +46,7 @@ test('a late old response cannot replace the latest route', async () => {
   const t = setup()
   await t.advance(650)
   t.change({ destinationAddress: 'Laisvės al. 10, Kaunas' }); await t.advance(650)
-  t.requests[1].resolve({ ...estimate, estimated_price: 100 }); await t.runner.flush()
+  t.requests[1].resolve({ ...estimate, distanceMeters: 97000 }); await t.runner.flush()
   t.requests[0].resolve(estimate); await t.runner.flush()
   assert.equal(t.runner.value.estimate.estimated_price, 100)
 })
@@ -78,6 +78,30 @@ test('a timed-out request produces an error and null metrics', async () => {
   await t.advance(650)
   t.requests[0].signal.addEventListener('abort', () => t.requests[0].reject(Error('aborted')))
   await t.advance(20000)
+  assert.equal(t.runner.value.status, 'error')
+  assert.equal(t.runner.value.estimate.estimated_price, null)
+})
+
+
+test('car type changes only price without another request, including pending selection', async () => {
+  const t = setup()
+  await t.advance(650)
+  t.change({ carType: 'comfort' })
+  assert.equal(t.runner.value.estimate.estimated_price, null)
+  t.requests[0].resolve(estimate); await t.runner.flush()
+  assert.equal(t.runner.value.estimate.estimated_price, 7.88)
+  assert.equal(t.runner.value.estimate.distance_km, 3.26)
+  assert.equal(t.runner.value.estimate.duration_min, 6)
+  t.change({ carType: 'standard' })
+  assert.equal(t.runner.value.estimate.estimated_price, 6.26)
+  t.change({ carType: 'comfort' })
+  assert.equal(t.runner.value.estimate.estimated_price, 7.88)
+  await t.advance(1000)
+  assert.equal(t.requests.length, 1)
+  assert.equal(t.requests[0].signal.aborted, false)
+  t.change({ destinationAddress: 'Laisvės al. 10, Kaunas' }); await t.advance(650)
+  t.requests[1].reject(Error('Unavailable')); await t.runner.flush()
+  t.change({ carType: 'standard' })
   assert.equal(t.runner.value.status, 'error')
   assert.equal(t.runner.value.estimate.estimated_price, null)
 })

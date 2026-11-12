@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import vm from 'node:vm'
 import { randomUUID } from 'node:crypto'
 import { getAddressError } from '../src/lib/addressValidation.js'
-import { emptyEstimate, normalizeRideEstimate, formatDistance, formatDuration, formatPrice } from '../src/lib/rideEstimate.js'
+import { calculateEstimate, emptyEstimate, normalizeRideEstimate, formatDistance, formatDuration, formatPrice } from '../src/lib/rideEstimate.js'
 import { loadFunctions, hookHarness } from './helpers/hookHarness.js'
 
 const key = 'taxigo:ride-draft:v1:user'
@@ -67,7 +67,7 @@ const auth = { session: { user: { id: 'user' } }, profile: { id: 'passenger', us
   loading: false, busy: false, profileLoading: false }
 const appSource = fs.readFileSync('src/App.jsx', 'utf8')
 const appLogic = appSource.slice(appSource.indexOf('const demoTrips'), appSource.indexOf('  const navigation ='))
-  + '\nreturn { book, restoreDraft, navigate, pickupAddress, destinationAddress, restoredEstimate, currentEstimate, formDraftId, notice, bookingError, setPickupAddress, setDestinationAddress, setPhoneDigits, savedTrips }; }\nTaxiGo'
+  + '\nreturn { book, restoreDraft, navigate, pickupAddress, destinationAddress, restoredEstimate, currentEstimate, formDraftId, notice, bookingError, setPickupAddress, setDestinationAddress, setPhoneDigits, setCar, savedTrips }; }\nTaxiGo'
 function appHarness(rides, getRoute) {
   return hookHarness(context => {
     const TaxiGo = vm.runInNewContext(appLogic, context)
@@ -184,4 +184,43 @@ test('form restores draft metrics as a labelled snapshot while recalculating; ol
   assert.equal(app.value.pickupAddress, values.pickup_address)
   app.render()
   assert.equal(app.value.savedTrips[0].price, 'Kaina nenustatyta')
+})
+
+
+test('both car types save displayed prices and history keeps original prices and types', async () => {
+  for (const [type, price, label] of [['standard', 13, 'Standartinis'], ['comfort', 18, 'Komfortas']]) {
+    const t = setup(), rides = t.mount(); await rides.flush()
+    const app = appHarness(rides, input => ({ status: 'ready', estimate: calculateEstimate(10000, 600, input.carType) }))
+    fill(app); app.value.setCar(type); app.render()
+    assert.equal(app.value.currentEstimate.estimated_price, price)
+    await app.value.book(event()); await rides.flush(); await app.flush()
+    const row = t.control.payloads[0]
+    assert.equal(row.car_type, type)
+    assert.equal(row.estimated_price, price)
+    assert.equal(row.distance_km, 10)
+    assert.equal(row.duration_min, 10)
+    assert.equal(Object.hasOwn(row, 'distanceMeters'), false)
+    assert.equal(app.value.savedTrips[0].price, formatPrice(price))
+    assert.equal(app.value.savedTrips[0].carLabel, label)
+    app.value.setCar(type === 'standard' ? 'comfort' : 'standard'); app.render()
+    assert.equal(app.value.savedTrips[0].price, formatPrice(price))
+  }
+})
+
+test('both tariff prices survive fallback restoration and same UUID retry', async () => {
+  for (const type of ['standard', 'comfort']) {
+    const t = setup({ offline: true }), rides = t.mount(); await rides.flush()
+    const metrics = calculateEstimate(10000, 600, type)
+    const failure = await rides.value.createRide({ ...values, car_type: type, ...metrics })
+    const stored = JSON.parse(t.storage.get(key))
+    assert.equal(stored.estimated_price, type === 'comfort' ? 18 : 13)
+    assert.equal(stored.car_type, type)
+    t.control.offline = false
+    const restored = await rides.value.getDraftForRestore()
+    const result = await rides.value.createRide(restored.draft, failure.draftId)
+    assert.equal(result.ride.id, stored.id)
+    assert.equal(result.ride.estimated_price, stored.estimated_price)
+    assert.equal(t.rows.size, 1)
+    assert.equal(t.storage.has(key), false)
+  }
 })
