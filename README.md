@@ -4,6 +4,8 @@ TaxiGo leidžia keleiviui prisiregistruoti, pasirinkti Lietuvos adresus, apskai�
 
 **TaxiGo yra mokomasis projektas – tikros taksi paslaugos neteikiamos.** Prisijungusio keleivio užsakymai išsaugomi Supabase, tačiau tai nėra tikras vairuotojo iškvietimas.
 
+**Būsena atnaujinta 2026-11-16.** Kodo teiginiai sutikrinti su GitHub `main` (`cf1a8bfa9c820e5e228ceb3ea205e41cae599332`), išorinių bandymų rezultatai – su [Notion dokumentacija](https://app.notion.com/p/415299223c19802fb674f380e46580fc). Senesni Notion pažangos įrašai yra istoriniai.
+
 ## 1. Tikslas ir apimtis (Scope)
 
 Tikslas – įgyvendinti visą mokomojo užsakymo kelią: paskyra → adresai → preliminarus įvertis → išsaugojimas → asmeninė istorija.
@@ -116,7 +118,9 @@ Kode profilis skaitomas pagal prisijungusio vartotojo `user_id`, o kelionės –
 
 **Serverio apsauga turi būti užtikrinta RLS, o ne vien kliento filtrais.** RLS privalo likti įjungtas abiem lentelėms. Politikos turi riboti prieigą pagal `auth.uid()`; `rides` INSERT taip pat turi tikrinti, kad nurodytas `passenger_id` priklauso tam pačiam vartotojui. Authenticated rolei reikalingos atitinkamos SELECT ir INSERT teisės.
 
-Savininkė anksčiau patvirtino `rides` SELECT / INSERT teises ir RLS politikas. Faktinės politikų sąlygos, DB ryšiai bei atmetimas su svetimu `passenger_id` šiame dokumentavimo etape tiesiogiai nepatikrinti. Atsiskaitymui reikia dviejų paskyrų izoliacijos testo ir Supabase lentelių, ryšių bei RLS ekrano nuotraukų.
+**Patvirtinta pagal 2026-11-12 Notion įrašą:** atliktas dviejų vartotojų UI bandymas – vieno vartotojo kelionės kito vartotojo istorijoje nerodomos. Dokumentuota Supabase Policies vizualinė peržiūra: abiejose lentelėse RLS įjungtas, politikos taikomos `authenticated` rolei. SELECT ribojamas pagal `user_id = auth.uid()`; `rides` INSERT tikrina ir keleivio priklausymą vartotojui. `passengers` INSERT bei UPDATE tikrina vartotojo ID; `rides` UPDATE / DELETE ir `passengers` DELETE politikų peržiūroje nebuvo.
+
+**Dar nepatikrinti saugumo testai:** faktinės `GRANT` teisės, API prieigos nustatymai ir tiesioginiai neleistinų SELECT, INSERT (įskaitant svetimą `passenger_id`), UPDATE bei DELETE bandymai su dviejų vartotojų sesijomis. UI izoliacijos testas ir politikų vizualinė peržiūra nėra pilnas serverio RLS saugumo auditas. Administratoriaus SQL Editor bandymai neatstoja vartotojo sesijos testų. Šio README atnaujinimo metu prie gyvos DB nesijungta, politikos nekeistos.
 
 ## 7. Lietuvos adresai, maršrutas ir preliminari kaina
 
@@ -129,10 +133,11 @@ Maršrutas skaičiuojamas Geoapify Routing API su `mode=drive`. Rankinis adresas
 ```text
 atstumas km = atstumas metrais / 1000 (rodoma 2 skaitmenimis po kablelio)
 trukmė min. = sekundės / 60 (apvalinama į didesnę sveiką minutę)
-kaina = 3 € + 1 € × atstumas km (apvalinama iki centų)
+Standard kaina = 3 € + 1,00 € × atstumas km (apvalinama iki centų)
+Comfort kaina = 3 € + 1,50 € × atstumas km (apvalinama iki centų)
 ```
 
-Kaina skaičiuojama iš pradinio atstumo metrais, prieš rodymo apvalinimą. Abiem automobilio tipams taikoma ta pati formulė. Rezultatai rodomi formoje, išsaugomi Supabase ir pateikiami istorijoje.
+Kaina skaičiuojama iš pradinio atstumo metrais, prieš rodymo apvalinimą. Pakeitus automobilio tipą perskaičiuojama tik kaina; atstumas ir trukmė nesikeičia, papildoma maršruto API užklausa nesiunčiama. Pavyzdžiui, 10 km: Standard – 13 €, Comfort – 18 €. Rezultatai rodomi formoje, išsaugomi Supabase ir pateikiami istorijoje.
 
 Naudojamas užklausų uždelsimas (debounce), atšaukimas ir apsauga nuo pasenusių atsakymų. Pakeitus adresą ankstesnis įvertis nebelaikomas dabartiniu. Jei API ar maršrutas nepasiekiamas, rodoma klaida ir galima tęsti su `NULL` įverčiu – išgalvota kaina nerodoma.
 
@@ -157,26 +162,29 @@ Neprisijungus galima naudoti demonstracinį režimą. Demo užsakymas nėra siun
 
 Užsakymo kode perduodama `priority`: „Kuo greičiau“ → `high`, pasirinktu laiku → `normal`.
 
-React kode tiesioginio Zapier Webhook kvietimo nėra. Grandinė iš Supabase INSERT per DB trigerį / Database Webhook į Zapier, Paths sąlygos ir faktiniai veiksmai turi būti patikrinti išorinėse sistemose. Saugyklos kodas jų veikimo nepatvirtina.
+React kode tiesioginio Zapier Webhook kvietimo nėra. Išorinė automatizacija dokumentuota [Notion](https://app.notion.com/p/415299223c19802fb674f380e46580fc): Supabase Webhook → Webhooks by Zapier (Catch Hook) → Filter → Paths.
 
-Atsiskaitymui paruošti:
+- **HIGH:** Path A → Gmail „Send Email“, pranešimas apie skubų užsakymą.
+- **NORMAL:** Fallback → Storage by Zapier „Set Value“, be Gmail laiško. Dokumentuota reikšmė `normal` raktui `taxigo_normal_orders`; tai nėra visų NORMAL užsakymų archyvas ar skaitiklis.
+- **Gmail klaida:** Error Handler → Storage by Zapier „Set Value“; raktas `taxigo_gmail_error`, reikšmė „Gmail siuntimo klaida“. Klaidos registravimas Storage savaime nepatvirtina atskiro pranešimo savininkui.
 
-- Supabase trigerio / Webhook konfigūracijos įrodymą, neatskleidžiant paslapčių.
-- Po vieną `high` ir `normal` užsakymą su susietu užsakymo ID ir vykdymo laiku.
-- Zapier Paths sąlygas bei abiejų šakų rezultatą Zap History.
-- Klaidos scenarijų, klaidos aptikimą, pranešimą savininkui ir pakartojimo eigą.
-- Automatizacijos savininko vardą, atsakomybę ir dokumentacijos nuorodą.
-- Mėnesio Tasks įvertį pagal faktinius mokamus veiksmus kiekvienoje šakoje: numatomi `high` užsakymai × jų Tasks + `normal` užsakymai × jų Tasks, papildomai įvertinant pakartojimus. Tikruosius skaičius pagrįsti Zap naudojimo duomenimis.
+Abu prioritetų keliai išbandyti ir paskelbta Zap versija dokumentuoti 2026-11-12. **2026-11-16 atliktas pilnas paskelbtos automatizacijos klaidos bandymas:** neteisingas Gmail gavėjas sukėlė „Handled error“ vykdymą; Notion pateiktoje Zap History nuotraukoje matomas laikas 17:41:18. Tai papildo ankstesnius atskirų žingsnių bandymus ir patvirtina viso Zap klaidos apdorojimą.
 
-Šių išorinių įrodymų ir faktinio Tasks skaičiaus šiame README dar nėra.
+**Po testo sėkmingas siuntimas atkurtas:** naujas HIGH užsakymas 2026-11-16 17:52:14 Lietuvos laiku, vartotojos patvirtinimu, baigėsi „Successful“ ir gautu laišku. Šio kontrolinio vykdymo rezultatas dokumentuotas pagal vartotojos patvirtinimą; nauja jo ekrano nuotrauka nepateikta. Gavėjo adresas ir užsakymo identifikatorius į README neperkeliami. Vėlesnis el. pašto nepristatymo pranešimas nėra tas pats, kas Gmail veiksmo klaida Zapier.
+
+**Mėnesio Tasks prognozė:** 50 Tasks/mėn. pagal Notion 2026-11-16 prielaidą: 25 HIGH × 1 Gmail veiksmas + 25 NORMAL × 1 Storage veiksmas = 50. Šiame modelyje Webhook, Filter ir Paths nelaikomi atskirais mokamais veiksmais. Tai planavimo prognozė, ne faktinis naudojimas ar plano kainos patvirtinimas; papildomas klaidų apdorojimas ir pakartojimai gali keisti sąnaudas. Faktinę apskaitą ir Webhooks / Paths prieinamumą reikia sutikrinti su naudojamu Zapier planu.
+
+Automatizacijos priežiūra: projekto savininkė; konfigūracija, bandymai ir įrodymai – Notion. Šiame dokumentavimo etape gyva Supabase Webhook ir Zapier konfigūracija tiesiogiai neperžiūrėta ir nekeista; išoriniai rezultatai pateikiami pagal dokumentuotus įrodymus.
 
 ## 10. Vercel diegimas ir aplinkos
 
-Projektas surenkamas kaip Vite statinė programa. Vercel nustatymai: priklausomybių diegimas `npm ci`, Build komanda `npm run build`, Output Directory `dist`.
+Projektas surenkamas kaip Vite statinė programa. Vercel diegimui naudojami Vite nustatymai: priklausomybių diegimas `npm ci`, Build komanda `npm run build`, Output Directory `dist`.
 
 Vercel projekto aplinkoje nustatykite tris 3 skyriuje išvardytus kintamuosius. Patikrinkite, kuriose aplinkose jie galioja, ir po pakeitimų atlikite naują diegimą. Supabase Auth URL nustatymus ir Geoapify leidžiamų svetainių apribojimus suderinkite su faktiniu viešu adresu.
 
-Viešas Vercel URL šiame dokumente dar nepateiktas. Diegimo būsenos negalima patvirtinti vien sėkmingu vietiniu surinkimu. Viešame puslapyje reikia patikrinti registraciją, prisijungimą, adresus, maršrutą, išsaugojimą ir istoriją telefone bei kompiuteryje.
+**Gyva svetainė: [TaxiGo](https://taxigo-gamma.vercel.app/).** Tikslus adresas paimtas iš GitHub repozitorijos svetainės lauko; 2026-11-16 atidarytas ir patvirtintas veikiantis TaxiGo prisijungimo ekranas. GitHub `main` commit Vercel būsena – „Deployment has completed“. PR peržiūros adresas nėra pagrindinis svetainės adresas.
+
+Ši patikra neapima prisijungimo tikra paskyra, visos užsakymo eigos ar telefono išdėstymo. Viešai aplinkai dar reikia pilnos registracijos, prisijungimo, adresų, maršruto, išsaugojimo ir istorijos patikros telefone bei kompiuteryje. Faktinės Vercel aplinkos kintamųjų reikšmės ir Auth / Geoapify paskyrų apribojimai šiame etape neperžiūrėti.
 
 ## 11. Automatinės ir rankinės patikros
 
@@ -188,28 +196,28 @@ node --test --test-concurrency=1 tests/*.test.js
 
 `npm test` komandos šiuo metu nėra. Testai paleidžiami tiesiogiai Node.js test runner. Nuoseklus vykdymas leidžia išvengti audito metu pasitaikiusios lygiagretaus procesų paleidimo `spawn EPERM` klaidos.
 
-2026-11-12 audite: lint ir build praėjo, 31 iš 31 testo praėjo. Build pateikė įspėjimą apie didesnį nei 500 kB JS paketą; surinkimas sėkmingas.
+**Naujausias dokumentuotas rezultatas – 35/35 testų praėjo**, lint ir build sėkmingi ([sujungtas PR #5](https://github.com/laimastriskiene-lgtm/taxigo/pull/5)). Build išlieka įspėjimas apie didesnį nei 500 kB JS paketą. Tai PR įgyvendinimo metu užfiksuoti rezultatai; šio README atnaujinimo metu testai, lint ir build iš naujo nepaleisti.
 
 Testų aprėptis:
 
 - `addressValidation.test.js` – 8 adresų tikslumo testai.
 - `geoapifyRouting.test.js` – 7 geokodavimo ir maršruto API testai.
-- `rideEstimate.test.js` – 4 formulės, reikšmių ir formatavimo testai.
-- `rideFlow.test.js` – 7 išsaugojimo, UUID, atkūrimo ir formos valdymo testai.
-- `useRideEstimate.test.js` – 5 debounce, pasenusių atsakymų, klaidų ir atšaukimo testai.
+- `rideEstimate.test.js` – 5 formulės, abiejų tarifų, reikšmių ir formatavimo testai.
+- `rideFlow.test.js` – 9 išsaugojimo, tarifų duomenų, UUID, atkūrimo ir formos valdymo testai.
+- `useRideEstimate.test.js` – 6 debounce, pasenusių atsakymų, klaidų, atšaukimo ir automobilio tipo keitimo be naujos API užklausos testai.
 
 API ir Supabase šiuose testuose imituojami; dalis formos logikos tikrinama be tikro naršyklės DOM. Testai nepatvirtina realių RLS politikų, Zapier ar Vercel veikimo. Savininkė patvirtino ankstesnę sėkmingą maršruto ir išsaugojimo patikrą naršyklėje bei Supabase.
 
-Rankinės patikros prieš atsiskaitymą:
+Rankinių patikrų sąrašas prieš atsiskaitymą (ne visas sąrašas jau atliktas; patvirtinimai atskirti 6, 9 ir 10 skyriuose):
 
 1. Registracija, klaidingas prisijungimas, sesijos atkūrimas ir atsijungimas.
-2. Dvi paskyros: svetimos istorijos nuskaitymo ir INSERT su svetimu `passenger_id` atmetimas.
+2. Dviejų paskyrų UI izoliacija jau dokumentuota; papildomai atlikti tiesioginius neleistinų DB operacijų bandymus, įskaitant INSERT su svetimu `passenger_id`.
 3. Tuščia istorija, filtrai ir seno užsakymo `NULL` įverčiai.
 4. Lietuvos miesto, miestelio ir kaimo adresai, namo numeris, rankinis adresas ir konkreti vieta be numerio.
 5. Greitas adresų keitimas, maršruto API sutrikimas, perskaičiavimas ir užsakymas be įverčio.
 6. Tinklo sutrikimas išsaugant, perkrovimas, aiškus juodraščio atkūrimas, pakartotinis siuntimas ir dvigubas paspaudimas. Patikrinti, kad DB liko vienas įrašas.
 7. Nauja tuščia forma po sėkmės; išsaugotas užsakymas nebeatkuriamas kaip juodraštis.
-8. `high` ir `normal` Zapier šakos, jų rezultatai ir klaidos apdorojimas.
+8. Pristatyti dokumentuotus `high` / `normal` ir pilno „Handled error“ rezultatus; prieš demonstraciją patikrinti Zapier plano galiojimą.
 9. Vieša Vercel aplinka telefone ir kompiuteryje: nėra horizontalaus slinkimo, veikia apatinė navigacija, pasiūlymai ir klaviatūros valdymas.
 
 ## 12. GitHub, Notion ir atsiskaitymas
@@ -219,9 +227,14 @@ Rankinės patikros prieš atsiskaitymą:
 - [PR #2 – Lietuvos adresų paieška ir validacija](https://github.com/laimastriskiene-lgtm/taxigo/pull/2).
 - [PR #3 – atstumas, trukmė ir preliminari kaina](https://github.com/laimastriskiene-lgtm/taxigo/pull/3).
 
-2026-11-12 audite visi trys PR buvo sujungti į `main`; vietinė `main` sutapo su GitHub. Tai audito momento, ne nuolat atnaujinama būsena.
+- [PR #4 – README ir TaxiGo favicon](https://github.com/laimastriskiene-lgtm/taxigo/pull/4).
+- [PR #5 – Standard ir Comfort tarifai](https://github.com/laimastriskiene-lgtm/taxigo/pull/5).
+- [Gyva Vercel svetainė](https://taxigo-gamma.vercel.app/).
+- [Notion dokumentacija](https://app.notion.com/p/415299223c19802fb674f380e46580fc).
 
-Dar reikia pateikti viešą Vercel URL ir Notion dokumentacijos nuorodą. Notion turi apimti projekto tikslą, Scope, užduočių sąrašą, bent 3 sprendimų įrašus ir 2 klaidų įrašus. Kiekviename įraše nurodyti kontekstą, pasirinktą sprendimą / taisymą ir rezultatą; nepriskirti dar neatliktų darbų įgyvendintiems.
+2026-11-16 GitHub patikroje **5 PR (#1–#5) sujungti į `main`**. Tai šios patikros momento būsena; šis README atnaujinimas į skaičių neįtrauktas.
+
+Notion pateikti tikslas, Scope, Kanban nuoroda, sprendimai, UI būsenų įrodymai, RLS peržiūra, Zapier klaidų bandymai ir Tasks prognozė. Senesnius pažangos įrašus reikia skaityti kartu su vėlesniais patikslinimais; pavyzdžiui, senas `ride_time` pavadinimas neatitinka dabartinio kodo `pickup_time`. Prieš atsiskaitymą sutikrinti dokumentacijos reikalavimus: bent 3 sprendimų ir 2 klaidų įrašai su kontekstu, sprendimu / taisymu ir rezultatu.
 
 Įrodymų rinkinys: Supabase lentelės, ryšiai ir RLS; dviejų vartotojų izoliacija; Zapier Paths ir Zap History; klaidų apdorojimas, savininkas ir Tasks skaičiavimas; testų rezultatai; viešas URL ir PR nuorodos. Ekrano nuotraukose paslėpti asmens duomenis, raktus ir Webhook paslaptis.
 
@@ -234,8 +247,8 @@ Siūlomas 5 minučių demonstracijos scenarijus:
 5. 3:30–4:30 – klaida, juodraštis ir pakartotinis bandymas be dublikato.
 6. 4:30–5:00 – testai, RLS įrodymai, PR ir likę ribojimai.
 
-Likę darbai: patvirtinti serverio RLS ir automatizaciją, surinkti išorinius įrodymus, pateikti Vercel / Notion nuorodas ir užbaigti rankines patikras. Papildomiems taškams galima įgyvendinti užsakymų istorijos grafiką; šiuo metu jo nėra.
+Likę darbai: užbaigti tiesioginius serverio RLS saugumo testus bei `GRANT` / API prieigos patikrą, pilną viešos svetainės patikrą telefone ir kompiuteryje, sutikrinti Zapier planą ir galutinį atsiskaitymo įrodymų rinkinį. Dokumentuoti UI izoliacijos ir Zapier klaidos bandymai nelaikomi neatliktais darbais. Papildomiems taškams galima įgyvendinti užsakymų istorijos grafiką; šiuo metu jo nėra.
 
 ## Autorė
 
-**Laima Striškienė**
+Projekto savininkė.
